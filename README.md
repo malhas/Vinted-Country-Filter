@@ -1,6 +1,5 @@
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Nigel1992)
 test
->  All donations go towards your chosen charity. All donations go towards your chosen charity. You can pick any charity you'd like, and I will ensure the funds are sent their way. Please note that standard payment processing fees (Ko-fi All donations go towards your chosen charity. You can pick any charity you'd like, and I will ensure the funds are sent their way. Please note that standard payment processing fees (Ko-fi & PayPal) will be deducted from the total. As a thank you, your name can be added to the official donor list for this project on GitHub. Feel free to email me at thedjskywalker@gmail.com for proof of the donation or to let me know which charity you've selected! :) PayPal) will be deducted from the total. As a thank you, your name can be added to the official donor list for this project on GitHub. Feel free to email me at thedjskywalker@gmail.com for proof of the donation or to let me know which charity you've selected! :). As a thank you, your name will be listed as a supporter/donor in this project. Feel free to email me at thedjskywalker@gmail.com for proof! :)
 
 # 🌍 Vinted Geolocator
 
@@ -11,7 +10,6 @@ test
 > Reveal hidden seller locations on Vinted and filter items by country with intelligent caching and a beautiful, intuitive UI.
 
 <img width="1179" height="601" alt="image" src="https://greasyfork.org/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6MjA0MTQyLCJwdXIiOiJibG9iX2lkIn19--cbe480cee924bfc7bfe4c1d50c14ffbea3b50d15/Screenshot_2026-01-17_22-29-05.png?locale=en" />
-
 
 ## ✨ Features
 
@@ -78,3 +76,7 @@ MIT License — feel free to use, modify, and share!
 <p align="center">
   Made with ❤️ by <a href="https://github.com/Nigel1992">Nigel1992</a>
 </p>
+
+## Support This Project
+
+Support this project! All donations go towards your chosen charity. You can pick any charity you'd like, and I will ensure the funds are sent their way. Please note that standard payment processing fees (Ko-fi & PayPal) will be deducted from the total. As a thank you, your name will be listed as a supporter/donor in this project. Feel free to email me at thedjskywalker@gmail.com for proof of the donation or to let me know which charity you've selected!
