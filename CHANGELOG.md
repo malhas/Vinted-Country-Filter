@@ -1,3 +1,27 @@
+## [1.4.11] - 2026-06-26
+
+### Fixed
+- Sends credentials and JSON `Accept` headers on per-item Vinted API lookups so extension-based userscript managers like Helium do not drop the logged-in session when fetching seller location details.
+
+## [1.4.10] - 2026-06-26
+
+### Fixed
+- Avoids showing the captcha/API-paused warning for a single item that returns `403` while the general item API is still healthy.
+- Marks only that item as unavailable and continues processing the rest of the catalog.
+
+## [1.4.9] - 2026-06-26
+
+### Fixed
+- Prevented captcha/access-block handling from automatically opening `/api/v2/items/1/details`, which could hijack the main Vinted tab in browsers that block or redirect popups.
+- The script now pauses on 403 responses, shows the captcha/access warning, and polls until API access is restored.
+
+## [1.4.8] - 2026-06-26
+
+### Fixed
+- Updated startup detection for Vinted's current header markup so the script no longer exits unless a visible/current login button is detected.
+- Removed the old English-only blocker; country names are now normalized across supported Vinted locales.
+- Cleaned newer `@match` metadata entries so userscript managers read only the URL pattern.
+
 ## [1.4.7] - 2026-01-29
 
 ### Changed

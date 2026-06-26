@@ -2,7 +2,7 @@
 
 # 🌍 Vinted Geolocator
 
-![Version](https://img.shields.io/badge/version-1.4.2-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.4.11-blue?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 ![JavaScript](https://img.shields.io/badge/javascript-ES6+-yellow?style=for-the-badge&logo=javascript&logoColor=white)
 
@@ -55,7 +55,7 @@
 
 ## ⚠️ Important Notes
 
-- **Language**: Set Vinted to **English** for the script to work correctly
+- **Language**: The script normalizes country names across supported Vinted locales
 - **Rate Limits**: The script respects Vinted's API limits.
 - **Visual Only**: Filtering is purely visual — it doesn't affect Vinted's search results
 

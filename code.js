@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vinted Country & City Filter (client-side)
 // @namespace    https://greasyfork.org/en/users/1550823-nigel1992
-// @version      1.4.7
+// @version      1.4.11
 // @description  Adds a country and city indicator to Vinted items and allows client-side visual filtering by including/excluding selected countries. The script uses Vinted’s public item API to retrieve country and city information. It does not perform purchases, send messages, or modify anything on Vinted servers.
 // @author       Nigel1992
 // @license      MIT
@@ -26,27 +26,57 @@
 // @match        https://www.vinted.hr/*
 // @match        https://www.vinted.ie/*
 // @match        https://www.vinted.com/*
-// @match        https://www.vinted.at/*    // Austria 🇦🇹
-// @match        https://www.vinted.dk/*    // Denmark 🇩🇰 (placeholder)
-// @match        https://www.vinted.fi/*    // Finland 🇫🇮 (placeholder)
-// @match        https://www.vinted.co.uk/* // United Kingdom 🇬🇧 (placeholder)
+// @match        https://www.vinted.at/*
+// @match        https://www.vinted.dk/*
+// @match        https://www.vinted.fi/*
+// @match        https://www.vinted.co.uk/*
 // @grant        none
 // @run-at       document-end
 // ==/UserScript==
 
 
 (function () {
-    // Check if user is logged in to Vinted
+    function queryAny(selectors) {
+        return selectors.some(selector => {
+            try {
+                return !!document.querySelector(selector);
+            } catch (e) {
+                return false;
+            }
+        });
+    }
 
     function isUserLoggedIn() {
-        // Check for the presence of <figure class="header-avatar">, which only appears when logged in
-        return !!document.querySelector('figure.header-avatar');
+        return queryAny([
+            'figure.header-avatar',
+            '[data-testid="header--user-menu-button"]',
+            '[data-testid="header-user-menu-button"]',
+            '[data-testid="header--profile-button"]',
+            '[data-testid="header-profile-button"]',
+            '[data-testid="user-menu-button"]',
+            '[data-testid="header--notifications-button"]',
+            '[data-testid="header--conversations-button"]',
+            'button[aria-label*="profile" i]',
+            'button[aria-label*="account" i]'
+        ]);
+    }
+
+    function isUserLoggedOut() {
+        if (isUserLoggedIn()) return false;
+        return queryAny([
+            '[data-testid="header--login-button"]',
+            '[data-testid="header-login-button"]',
+            '[data-testid*="sign-in"]',
+            '[data-testid*="login"]',
+            'a[href*="/login"]',
+            'a[href*="/member/general/login"]'
+        ]);
     }
 
     // Skip login check if captcha is being shown (isPausedForCaptcha or captcha warning visible)
     const captchaWarning = document.getElementById('vinted-captcha-warning');
     // Do not show login warning when visiting API endpoints directly (e.g., /api/...)
-    if (!isUserLoggedIn() && !(window.isPausedForCaptcha || (captchaWarning && captchaWarning.style.display === 'block')) && !window.location.pathname.includes('/api/')) {
+    if (isUserLoggedOut() && !(window.isPausedForCaptcha || (captchaWarning && captchaWarning.style.display === 'block')) && !window.location.pathname.includes('/api/')) {
         const msg = '⚠️ [Vinted Country & City Filter] You must be logged in to Vinted for this script to work. Please log in and refresh the page.';
         const banner = document.createElement('div');
         banner.textContent = msg;
@@ -166,20 +196,47 @@
     function normalizeCountryName(name) {
         if (!name) return '';
         const s = String(name).toLowerCase().trim();
+        const normalized = s.normalize
+            ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            : s;
 
-        if (s === 'uk' || s === 'gb' || s.includes('united kingdom') || s.includes('great britain')) return 'united kingdom';
-        if (s.includes('czech')) return 'czech republic';
-        if (s.includes('slovak')) return 'slovakia';
-        if (s.includes('luxembourg')) return 'luxembourg';
-        if (s.includes('ireland')) return 'ireland';
+        if (normalized === 'uk' || normalized === 'gb') return 'united kingdom';
 
-        const keywords = ['netherlands','belgium','france','germany','spain','italy','portugal','poland','sweden','denmark','finland','austria','romania','greece','bulgaria','slovenia','croatia','lithuania','hungary'];
-        for (const kw of keywords) {
-            if (s.includes(kw)) return kw;
+        const countryAliases = {
+            'netherlands': ['netherlands', 'nederland', 'nederlanden', 'pays bas', 'pays-bas', 'paises bajos', 'paesi bassi', 'niederlande', 'holanda', 'holandia', 'nizozemsko', 'nizozemska'],
+            'belgium': ['belgium', 'belgie', 'belgique', 'belgio', 'belgica', 'belgien'],
+            'france': ['france', 'frankrijk', 'frankreich', 'francia', 'francja', 'francie'],
+            'germany': ['germany', 'deutschland', 'duitsland', 'allemagne', 'alemania', 'germania', 'niemcy', 'nemecko', 'nemecka'],
+            'spain': ['spain', 'espana', 'spanje', 'spanien', 'espagne', 'hiszpania', 'spagna', 'spanelsko'],
+            'italy': ['italy', 'italia', 'italie', 'italien', 'wlochy', 'włochy', 'itálie'],
+            'portugal': ['portugal', 'portugalia', 'portugalsko'],
+            'poland': ['poland', 'polska', 'polen', 'pologne', 'polonia', 'polsko'],
+            'united kingdom': ['united kingdom', 'great britain', 'verenigd koninkrijk', 'vereinigtes konigreich', 'royaume uni', 'royaume-uni', 'reino unido', 'regno unito', 'wielka brytania', 'velka britanie'],
+            'sweden': ['sweden', 'sverige', 'zweden', 'schweden', 'suede', 'suecia', 'svezia', 'szwecja', 'svedsko'],
+            'denmark': ['denmark', 'danmark', 'denemarken', 'danemark', 'dinamarca', 'danimarca', 'dania', 'dansko'],
+            'finland': ['finland', 'suomi', 'finlande', 'finlandia', 'finsko'],
+            'ireland': ['ireland', 'ierland', 'irland', 'irlande', 'irlanda', 'irlandia', 'irsko'],
+            'austria': ['austria', 'osterreich', 'oostenrijk', 'autriche', 'austria', 'rakousko'],
+            'romania': ['romania', 'roemenie', 'rumania', 'roumanie', 'rumunsko'],
+            'greece': ['greece', 'griekenland', 'griechenland', 'grece', 'grecia', 'grecja', 'recko', 'hellas'],
+            'bulgaria': ['bulgaria', 'bulgarije', 'bulgarien', 'bulgarie', 'bulharsko'],
+            'slovenia': ['slovenia', 'slovenie', 'slowenien', 'slovenija', 'eslovenia', 'slowenia', 'slovinsko'],
+            'croatia': ['croatia', 'kroatie', 'kroatien', 'croatie', 'croazia', 'chorwacja', 'chorvatsko', 'hrvatska'],
+            'czech republic': ['czech republic', 'czechia', 'ceska republika', 'tsjechie', 'tsjechie', 'tsechie', 'republique tcheque', 'repubblica ceca', 'republica checa', 'czechy'],
+            'hungary': ['hungary', 'magyarorszag', 'hongarije', 'ungarn', 'hongrie', 'hungria', 'wegry', 'węgry', 'madarsko'],
+            'slovakia': ['slovakia', 'slovak', 'slovensko', 'slowakije', 'slowakei', 'slovaquie', 'slovacchia', 'eslovaquia'],
+            'lithuania': ['lithuania', 'lietuva', 'litouwen', 'litauen', 'lituanie', 'lituania', 'litwa', 'litva'],
+            'luxembourg': ['luxembourg', 'luxemburg', 'luxemburgo', 'luksemburg']
+        };
+
+        for (const [country, aliases] of Object.entries(countryAliases)) {
+            if (aliases.some(alias => normalized.includes(alias))) {
+                return country;
+            }
         }
 
         // Fallback: collapse multiple spaces into single space
-        return s.replace(/\s+/g, ' ');
+        return normalized.replace(/\s+/g, ' ');
     }
 
     /* =========================
@@ -270,6 +327,31 @@
                 // Ignore errors, keep checking
             }
         }, 1500); // Check every 1.5 seconds
+    }
+
+    async function isApiAccessBlocked() {
+        try {
+            const response = await fetch(
+                `https://${location.hostname}/api/v2/items/1/details`,
+                {
+                    credentials: 'include',
+                    headers: { 'Accept': 'application/json, text/plain, */*' }
+                }
+            );
+            return response.status === 403;
+        } catch (e) {
+            console.warn('[Vinted Filter] API access probe failed:', e);
+            return false;
+        }
+    }
+
+    function markItemUnavailable(item, label = 'Unavailable') {
+        item.overlay.textContent = `⚠️ ${label}`;
+        item.overlay.style.background = 'linear-gradient(135deg, rgba(117,117,117,0.95) 0%, rgba(97,97,97,0.95) 100%)';
+        item.overlay.style.color = 'white';
+        item.overlay.style.borderColor = '#757575';
+        item.overlay.style.fontSize = '10px';
+        item.overlay.style.padding = '5px 9px';
     }
 
     function onCaptchaSolved() {
@@ -516,10 +598,10 @@
                             color: #856404;
                         ">
                             <span style="font-size: 20px;">⚠️</span>
-                            <span>Language Warning</span>
+                            <span>Locale Notice</span>
                         </div>
                         <p style="margin: 0; color: #856404; line-height: 1.5;">
-                            This script only works when Vinted is set to <strong>English</strong>. Please change your language to English in your Vinted settings to use this filter.
+                            Country names are normalized automatically for supported Vinted locales.
                         </p>
                     </div>
 
@@ -552,10 +634,10 @@
                             color: #c62828;
                         ">
                             <span style="font-size: 20px;">🔓</span>
-                            <span>Auto-Solving Captcha</span>
+                            <span>API Access Paused</span>
                         </div>
                         <p style="margin: 0; color: #555; line-height: 1.5;">
-                            A popup window has been opened to automatically solve the captcha. Please complete the captcha in the popup window. The script will automatically detect when it's solved and continue processing.
+                            Vinted returned a captcha or access block. Open a Vinted API page in a separate tab if Vinted asks for a check; this script will keep checking and resume when access is restored.
                         </p>
                     </div>
 
@@ -820,7 +902,7 @@
                     padding-top: 8px;
                     border-top: 1px solid ${darkMode ? '#444' : '#eee'};
                 ">
-                    v1.4.7 • Jan 29, 2026
+                    v1.4.11 • Jun 26, 2026
                 </div>
             </div>
         `;
@@ -1382,10 +1464,23 @@ const countryKey = cachedData.country; // normalized
 
         try {
             const response = await fetch(
-                `https://${location.hostname}/api/v2/items/${item.id}/details`
+                `https://${location.hostname}/api/v2/items/${item.id}/details`,
+                {
+                    credentials: 'include',
+                    headers: { 'Accept': 'application/json, text/plain, */*' }
+                }
             );
 
             if (response.status === 403) {
+                const apiBlocked = await isApiAccessBlocked();
+                if (!apiBlocked) {
+                    console.warn(`[Vinted Filter] Item ${item.id} returned 403, but API probe is healthy. Skipping item.`);
+                    markItemUnavailable(item);
+                    updateQueueStatus();
+                    setTimeout(() => (isProcessing = false), 100);
+                    return;
+                }
+
                 isPausedForCaptcha = true;
                 queue.unshift(item);
                 const warningEl = document.getElementById('vinted-captcha-warning');
@@ -1393,9 +1488,9 @@ const countryKey = cachedData.country; // normalized
                     warningEl.style.display = 'block';
                 }
                 
-                // Automatically open captcha popup
-                console.log('[Vinted Filter] Captcha detected (403). Opening popup automatically...');
-                openCaptchaPopup();
+                console.warn('[Vinted Filter] Captcha or access block detected (403). Pausing without opening a popup automatically.');
+                updateStatusMessage('⚠️ API access paused. Complete any Vinted captcha/check in a separate tab, then this will resume automatically.');
+                startCaptchaCheck();
                 
                 isProcessing = false;
                 return;
@@ -1574,93 +1669,16 @@ const countryKey = cachedData.country; // normalized
 
     function checkLanguage() {
         const warningEl = document.getElementById('vinted-language-warning');
-        if (!warningEl) {
-            // If menu doesn't exist yet, wait a bit and check again
-            return false;
+        if (warningEl) {
+            warningEl.style.display = 'none';
         }
-
-        let isEnglish = false;
-
-        // Method 0: Check <html lang="..."> attribute first (preferred)
-        try {
-            const htmlLang = document.documentElement && document.documentElement.getAttribute && document.documentElement.getAttribute('lang');
-            if (htmlLang && htmlLang.toLowerCase().startsWith('en')) {
-                isEnglish = true;
-            }
-        } catch (e) {
-            // ignore
+        if (isWaitingForEnglish) {
+            isWaitingForEnglish = false;
+            updateStatusMessage('Ready to filter items...');
         }
+        englishCheckComplete = true;
 
-        // Method 1: Check meta tags for content="en" or content starting with en
-        if (!isEnglish) {
-            try {
-                const metas = Array.from(document.querySelectorAll('meta'));
-                for (const m of metas) {
-                    const content = (m.getAttribute('content') || '').toLowerCase().trim();
-                    if (!content) continue;
-
-                    // Common formats: "en", "en-US", "en; charset=utf-8"
-                    if (content === 'en' || content.startsWith('en-') || content.split(/[;,]/)[0].trim() === 'en') {
-                        isEnglish = true;
-                        break;
-                    }
-
-                    const name = (m.getAttribute('name') || '').toLowerCase();
-                    const http = (m.getAttribute('http-equiv') || '').toLowerCase();
-                    if ((name === 'content-language' || http === 'content-language' || name === 'language' || name === 'locale') && content.startsWith('en')) {
-                        isEnglish = true;
-                        break;
-                    }
-                }
-            } catch (e) {
-                // ignore DOM errors
-            }
-        }
-
-        // Method 2: Check URL parameter as a fallback (e.g., ?locale=en)
-        if (!isEnglish) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const locale = urlParams.get('locale');
-            if (locale && locale.toLowerCase().startsWith('en')) {
-                isEnglish = true;
-            }
-        }
-
-        // Handle language state
-        if (isEnglish) {
-            // English detected
-            if (isWaitingForEnglish) {
-                isWaitingForEnglish = false;
-                englishCheckComplete = true;
-                warningEl.style.display = 'none';
-                updateStatusMessage('✓ English detected. Starting to process items...');
-
-                // Clear any existing items and restart fresh
-                processedItems.clear();
-                queue.length = 0;
-
-                // Small delay before resuming
-                setTimeout(() => {
-                    updateStatusMessage('Ready to filter items...');
-                }, 1500);
-            } else {
-                // Already in English, just hide warning
-                warningEl.style.display = 'none';
-                if (!englishCheckComplete) {
-                    englishCheckComplete = true;
-                }
-            }
-        } else {
-            // Not English - show warning
-            if (!isWaitingForEnglish) {
-                isWaitingForEnglish = true;
-                englishCheckComplete = false;
-                updateStatusMessage('⚠️ Please switch to English to use this filter');
-            }
-            warningEl.style.display = 'block';
-        }
-
-        return isEnglish;
+        return true;
     }
 
     // Track navigation changes (SPA navigation)
@@ -1669,7 +1687,7 @@ const countryKey = cachedData.country; // normalized
         const url = location.href;
         if (url !== lastUrl) {
             lastUrl = url;
-            // Reset English check on navigation
+            // Reset locale readiness on navigation if an older warning state was active
             if (isWaitingForEnglish) {
                 englishCheckComplete = false;
             }
@@ -1753,10 +1771,10 @@ const countryKey = cachedData.country; // normalized
 
     injectStyles();
 
-    // Initial language check on load
+    // Initial locale readiness check on load
     function initialLanguageCheck() {
-        const isEnglish = checkLanguage();
-        if (!isEnglish) {
+        const isLocaleReady = checkLanguage();
+        if (!isLocaleReady) {
             isWaitingForEnglish = true;
             englishCheckComplete = false;
         } else {
@@ -1770,6 +1788,6 @@ const countryKey = cachedData.country; // normalized
     setInterval(createMenu, 1000);
     setInterval(scanItems, 2000);
     setInterval(processQueue, 200);
-    setInterval(checkLanguage, 2000); // Check language every 2 seconds
+    setInterval(checkLanguage, 2000); // Keep locale state ready during SPA updates
 
 })();

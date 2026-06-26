@@ -1,4 +1,4 @@
-## Vinted Country & City Filter (Client-side) v1.4.1.1
+## Vinted Country & City Filter (Client-side) v1.4.11
 
 ![Screenshot](https://greasyfork.org/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6MjAyMTI5LCJwdXIiOiJibG9iX2lkIn19--e0c7cd180b6a3a98fab91859d3e33e859e744675/Screenshot_2026-01-04_22-44-33-min%20(1).png?locale=nl)
 
@@ -30,7 +30,7 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 - **Live statistics** show matching items, total scanned, and items in processing queue.
 - When **filtering is disabled**, all items remain fully visible while still showing location information.
 - **Automatic captcha detection** and popup solver when API is blocked.
-- **Language detection** ensures the script only works when Vinted is set to English.
+- **Locale normalization** supports country labels returned by Vinted in multiple languages.
 - **Duplicate seller detection** highlights items from the same seller with color-coded badges.
 
 ---
@@ -59,7 +59,7 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 - 🏷️ **Seller flagging** — Flag/unflag sellers for quick identification
 - 👥 **Duplicate detection** — Color-coded badges show items from the same seller
 - 🔓 **Auto captcha solver** — Automatically detects and opens captcha popup for resolution
-- 🌐 **Language detection** — Only works when Vinted is set to English
+- 🌐 **Locale normalization** — Supports country labels from multiple Vinted locales
 - 📈 **Progress tracking** — Visual progress bar shows scanning completion
 - 🗑️ **Cache management** — Clear cached data with one click
 - 📊 **Stats reset** — Reset statistics counters when needed
@@ -93,7 +93,7 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 ---
 
 ### Important notes (please read)
-- **Language**: Set Vinted to **English** for the script to work correctly
+- **Language**: The script normalizes country names across supported Vinted locales.
 - This script **uses Vinted's own API** to fetch item details.
 - Because of API rate limits, item locations are **not loaded all at once**.
 - Scrolling very fast or opening pages with many items may temporarily increase the queue.
@@ -113,7 +113,7 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 
 ### Usage instructions
 1. Install the script using a userscript manager (e.g. Tampermonkey).
-2. **Set Vinted to English** in your language settings for the script to work.
+2. Open Vinted in your preferred supported locale.
 3. Open Vinted and browse items as usual.
 4. Use the **Location Filter** floating menu on the right side of the page.
 5. Toggle **"Filter Active"** to enable/disable filtering.
@@ -147,7 +147,7 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 
 ### Troubleshooting
 - **Items not clickable?** — Make sure you're running the latest version (v1.4.1.1+)
-- **No location data showing?** — Check that Vinted is set to English
+- **No location data showing?** — Check whether Vinted is showing a captcha or rate limit warning
 - **Captcha appearing?** — Complete the automatic popup and click Resume
 - **Items loading slowly?** — This is normal due to API rate limiting
 - **Filter not working?** — Make sure "Filter Active" is toggled ON
