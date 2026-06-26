@@ -2,7 +2,7 @@
 
 # 🌍 Vinted Geolocator
 
-![Version](https://img.shields.io/badge/version-1.4.11-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.4.14-blue?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 ![JavaScript](https://img.shields.io/badge/javascript-ES6+-yellow?style=for-the-badge&logo=javascript&logoColor=white)
 

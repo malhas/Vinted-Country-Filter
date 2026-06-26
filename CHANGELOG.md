@@ -1,3 +1,20 @@
+## [1.4.14] - 2026-06-26
+
+### Added
+- Adds an API recovery watchdog that retries real visible/queued item endpoints with backoff instead of relying on a raw synthetic API page.
+- Adds a **Retry API now** button to the access-paused warning so users can manually kick recovery without opening API URLs or needing external debugging.
+
+## [1.4.13] - 2026-06-26
+
+### Fixed
+- Uses the item that actually triggered the access-block pause when polling for API recovery, instead of the synthetic `/api/v2/items/1/details` endpoint that can stay blocked by Cloudflare/Helium while real item lookups already work.
+
+## [1.4.12] - 2026-06-26
+
+### Fixed
+- Avoids falsely pausing with the API blocked/captcha warning when an individual item returns a plain `403` response.
+- Captcha polling now waits only while the response actually looks like a challenge/access block, so the script can recover when the old probe endpoint returns a non-challenge `403`.
+
 ## [1.4.11] - 2026-06-26
 
 ### Fixed

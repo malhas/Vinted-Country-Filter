@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vinted Country & City Filter (client-side)
 // @namespace    https://greasyfork.org/en/users/1550823-nigel1992
-// @version      1.4.11
+// @version      1.4.14
 // @description  Adds a country and city indicator to Vinted items and allows client-side visual filtering by including/excluding selected countries. The script uses Vinted’s public item API to retrieve country and city information. It does not perform purchases, send messages, or modify anything on Vinted servers.
 // @author       Nigel1992
 // @license      MIT
@@ -133,7 +133,8 @@
     - Filtering is purely visual (opacity and grayscale) and does not affect
       Vinted search results or server-side filters.
     - The script may temporarily pause if Vinted returns a 403 (captcha)
-      or 429 (rate limit). In this case the user must manually solve the captcha.
+      or 429 (rate limit). In this case the script retries real item API
+      requests and resumes when access is restored.
     - No data is sent to third parties. The script contains no tracking,
       advertising, miners, or other self-gain functionality.
     */
@@ -150,6 +151,9 @@
     let isPausedForCaptcha = false;
     let captchaPopup = null;
     let captchaCheckInterval = null;
+    let captchaProbeItemIds = [];
+    let captchaProbeIndex = 0;
+    let captchaRetryAttempt = 0;
     let isWaitingForEnglish = false;
     let englishCheckComplete = false;
     let darkMode = sessionStorage.getItem('vinted_dark_mode') === 'true';
@@ -163,6 +167,7 @@
     const queue = [];
     const CACHE_PREFIX = 'vinted_item_';
     const PRESETS_PREFIX = 'vinted_preset_';
+    const API_RECOVERY_RETRY_DELAYS = [5000, 15000, 30000, 60000];
 
     const countryToFlag = {
         'netherlands': '🇳🇱',
@@ -268,68 +273,147 @@
             updateStatusMessage('A popup window has been opened to automatically solve the captcha. Please complete the captcha in the popup window. The script will automatically detect when it\'s solved and continue processing. If you do not see a popup, check your browser\'s popup settings.');
         }
         // Start checking if captcha is solved
-        startCaptchaCheck();
+        startCaptchaCheck('1');
         return true;
     }
 
-    function startCaptchaCheck() {
-        // Clear any existing interval
-        if (captchaCheckInterval) {
-            clearInterval(captchaCheckInterval);
+    function addUniqueProbeItemId(ids, itemId) {
+        const id = String(itemId || '').trim();
+        if (/^\d+$/.test(id) && !ids.includes(id)) {
+            ids.push(id);
         }
-        
-        captchaCheckInterval = setInterval(async () => {
+    }
+
+    function collectApiProbeItemIds(primaryItemId = '') {
+        const ids = [];
+        addUniqueProbeItemId(ids, primaryItemId);
+
+        queue.slice(0, 8).forEach(item => addUniqueProbeItemId(ids, item && item.id));
+
+        const knownIds = Array.from(processedItems.keys()).slice(-8);
+        knownIds.forEach(itemId => addUniqueProbeItemId(ids, itemId));
+
+        return ids;
+    }
+
+    function clearCaptchaCheckTimer() {
+        if (captchaCheckInterval) {
+            clearTimeout(captchaCheckInterval);
+            captchaCheckInterval = null;
+        }
+    }
+
+    function startCaptchaCheck(probeItemId = '1', immediate = false) {
+        clearCaptchaCheckTimer();
+
+        captchaProbeItemIds = collectApiProbeItemIds(probeItemId);
+        if (captchaProbeItemIds.length === 0) {
+            addUniqueProbeItemId(captchaProbeItemIds, probeItemId || '1');
+        }
+        captchaProbeIndex = 0;
+        captchaRetryAttempt = 0;
+
+        const scheduleNextCheck = (delay) => {
+            clearCaptchaCheckTimer();
+            captchaCheckInterval = setTimeout(runCheck, delay);
+        };
+
+        const runCheck = async () => {
             try {
+                const probeItemIdToCheck = captchaProbeItemIds[captchaProbeIndex % captchaProbeItemIds.length] || '1';
+                captchaProbeIndex++;
+                const safeProbeItemId = encodeURIComponent(probeItemIdToCheck);
+
                 // Try to fetch the API to see if captcha is solved
                 const response = await fetch(
-                    `https://${location.hostname}/api/v2/items/1/details`,
-                    { credentials: 'include' }
+                    `https://${location.hostname}/api/v2/items/${safeProbeItemId}/details`,
+                    {
+                        credentials: 'include',
+                        headers: { 'Accept': 'application/json, text/plain, */*' }
+                    }
                 );
 
-                // If we get a 200 immediately, captcha is solved; close popup right away
-                if (response.ok && response.status === 200) {
+                if (!(await isAccessBlockResponse(response))) {
+                    console.log('[Vinted Filter] API access restored.');
                     onCaptchaSolved();
                     return;
                 }
-                
-                // If we no longer get 403, captcha is solved
-                if (response.status !== 403) {
-                    const text = await response.text();
-                    try {
-                        let data = JSON.parse(text);
-                        // Handle array response: [{"code":104,...}]
-                        if (Array.isArray(data)) {
-                            data = data[0] || {};
-                        }
-                        // Check if we get the "not found" response or valid data (means captcha is solved)
-                        if (data.code === 104 || data.message_code === 'not_found' || data.item) {
-                            console.log('[Vinted Filter] Captcha solved! Response:', data);
-                            onCaptchaSolved();
-                            return;
-                        }
-                    } catch (parseError) {
-                        // If response is not JSON but status is OK, captcha might be solved
-                        if (response.ok) {
-                            console.log('[Vinted Filter] Captcha appears solved (non-JSON response)');
-                            onCaptchaSolved();
-                            return;
-                        }
-                        // Also check if the HTML response contains "message_code" (captcha solved)
-                        if (text.includes('message_code')) {
-                            console.log('[Vinted Filter] Captcha solved! Found message_code in HTML response');
-                            onCaptchaSolved();
-                            return;
-                        }
-                    }
-                }
             } catch (e) {
                 console.log('[Vinted Filter] Captcha check error:', e);
-                // Ignore errors, keep checking
             }
-        }, 1500); // Check every 1.5 seconds
+
+            captchaRetryAttempt++;
+            const retryDelay = API_RECOVERY_RETRY_DELAYS[Math.min(captchaRetryAttempt, API_RECOVERY_RETRY_DELAYS.length - 1)];
+            updateStatusMessage(`⚠️ API access paused. Retrying automatically in ${Math.round(retryDelay / 1000)}s...`);
+            scheduleNextCheck(retryDelay);
+        };
+
+        const firstDelay = immediate ? 0 : API_RECOVERY_RETRY_DELAYS[0];
+        scheduleNextCheck(firstDelay);
     }
 
-    async function isApiAccessBlocked() {
+    function getResponseHeader(response, name) {
+        try {
+            if (!response || !response.headers || typeof response.headers.get !== 'function') {
+                return '';
+            }
+            return response.headers.get(name) || '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    async function getResponseText(response) {
+        try {
+            const readableResponse = response && typeof response.clone === 'function'
+                ? response.clone()
+                : response;
+
+            if (!readableResponse || typeof readableResponse.text !== 'function') {
+                return '';
+            }
+
+            return await readableResponse.text();
+        } catch (e) {
+            return '';
+        }
+    }
+
+    async function isAccessBlockResponse(response) {
+        if (!response || response.status !== 403) {
+            return false;
+        }
+
+        const cfMitigated = getResponseHeader(response, 'cf-mitigated').toLowerCase();
+        if (cfMitigated.includes('challenge')) {
+            return true;
+        }
+
+        const contentType = getResponseHeader(response, 'content-type').toLowerCase();
+        const text = (await getResponseText(response)).toLowerCase();
+
+        if (!text) {
+            return false;
+        }
+
+        if (contentType.includes('text/html')) {
+            return text.includes('challenge-platform') ||
+                   text.includes('_cf_chl_opt') ||
+                   text.includes('cf-chl') ||
+                   text.includes('captcha') ||
+                   text.includes('enable javascript and cookies to continue');
+        }
+
+        return text.includes('captcha') ||
+               text.includes('cloudflare challenge') ||
+               text.includes('challenge_required');
+    }
+
+    async function isApiAccessBlocked(responseToInspect = null) {
+        if (responseToInspect) {
+            return isAccessBlockResponse(responseToInspect);
+        }
+
         try {
             const response = await fetch(
                 `https://${location.hostname}/api/v2/items/1/details`,
@@ -338,7 +422,7 @@
                     headers: { 'Accept': 'application/json, text/plain, */*' }
                 }
             );
-            return response.status === 403;
+            return isAccessBlockResponse(response);
         } catch (e) {
             console.warn('[Vinted Filter] API access probe failed:', e);
             return false;
@@ -356,12 +440,12 @@
 
     function onCaptchaSolved() {
         // Stop checking
-        if (captchaCheckInterval) {
-            clearInterval(captchaCheckInterval);
-            captchaCheckInterval = null;
-        }
+        clearCaptchaCheckTimer();
 
         hasShownCaptchaAlert = false;
+        captchaProbeItemIds = [];
+        captchaProbeIndex = 0;
+        captchaRetryAttempt = 0;
         
         // Close popup - try multiple times to ensure it closes
         if (captchaPopup && !captchaPopup.closed) {
@@ -401,6 +485,23 @@
         setTimeout(() => {
             updateStatusMessage('Processing items...');
         }, 1500);
+    }
+
+    function retryApiAccessNow() {
+        clearCaptchaCheckTimer();
+
+        const probeIds = collectApiProbeItemIds(captchaProbeItemIds[0]);
+        const retryProbeItemId = probeIds[0] || captchaProbeItemIds[0] || '1';
+
+        isPausedForCaptcha = false;
+        const warningEl = document.getElementById('vinted-captcha-warning');
+        if (warningEl) {
+            warningEl.style.display = 'none';
+        }
+
+        updateStatusMessage('Retrying API access with visible items...');
+        startCaptchaCheck(retryProbeItemId, true);
+        setTimeout(processQueue, 0);
     }
 
     /* =========================
@@ -637,8 +738,21 @@
                             <span>API Access Paused</span>
                         </div>
                         <p style="margin: 0; color: #555; line-height: 1.5;">
-                            Vinted returned a captcha or access block. Open a Vinted API page in a separate tab if Vinted asks for a check; this script will keep checking and resume when access is restored.
+                            Vinted returned a captcha or access block. The script will retry real item requests automatically and resume when access is restored.
                         </p>
+                        <button id="vinted-api-retry-now" style="
+                            margin-top: 12px;
+                            width: 100%;
+                            padding: 9px;
+                            background: #c62828;
+                            color: white;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            font-size: 12px;
+                            transition: background 0.2s;
+                        " onmouseover="this.style.background='#ad2020'" onmouseout="this.style.background='#c62828'" title="Retry API access using visible Vinted items">↻ Retry API now</button>
                     </div>
 
                     <div style="display: flex; gap: 8px; margin-top: 12px;">
@@ -902,7 +1016,7 @@
                     padding-top: 8px;
                     border-top: 1px solid ${darkMode ? '#444' : '#eee'};
                 ">
-                    v1.4.11 • Jun 26, 2026
+                    v1.4.14 • Jun 26, 2026
                 </div>
             </div>
         `;
@@ -1108,6 +1222,12 @@
                 updateStatusMessage('Stats reset!');
             }
         });
+
+        const apiRetryButton = document.getElementById('vinted-api-retry-now');
+        if (apiRetryButton) {
+            apiRetryButton.addEventListener('click', retryApiAccessNow);
+        }
+
         const countryCheckboxes = document.querySelectorAll('#vinted-country-checkboxes input[type="checkbox"]');
         countryCheckboxes.forEach(checkbox => {
             checkbox.checked = includedCountries.includes(normalizeCountryName(checkbox.id.replace('include-', '').replace(/-/g, ' ')));
@@ -1472,9 +1592,9 @@ const countryKey = cachedData.country; // normalized
             );
 
             if (response.status === 403) {
-                const apiBlocked = await isApiAccessBlocked();
+                const apiBlocked = await isApiAccessBlocked(response);
                 if (!apiBlocked) {
-                    console.warn(`[Vinted Filter] Item ${item.id} returned 403, but API probe is healthy. Skipping item.`);
+                    console.warn(`[Vinted Filter] Item ${item.id} returned 403 without a captcha/access-block challenge. Skipping item.`);
                     markItemUnavailable(item);
                     updateQueueStatus();
                     setTimeout(() => (isProcessing = false), 100);
@@ -1489,8 +1609,8 @@ const countryKey = cachedData.country; // normalized
                 }
                 
                 console.warn('[Vinted Filter] Captcha or access block detected (403). Pausing without opening a popup automatically.');
-                updateStatusMessage('⚠️ API access paused. Complete any Vinted captcha/check in a separate tab, then this will resume automatically.');
-                startCaptchaCheck();
+                updateStatusMessage('⚠️ API access paused. Retrying real item requests automatically...');
+                startCaptchaCheck(item.id);
                 
                 isProcessing = false;
                 return;

@@ -1,4 +1,4 @@
-## Vinted Country & City Filter (Client-side) v1.4.11
+## Vinted Country & City Filter (Client-side) v1.4.14
 
 ![Screenshot](https://greasyfork.org/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6MjAyMTI5LCJwdXIiOiJibG9iX2lkIn19--e0c7cd180b6a3a98fab91859d3e33e859e744675/Screenshot_2026-01-04_22-44-33-min%20(1).png?locale=nl)
 
@@ -29,7 +29,7 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 - Items are **updated immediately** when the filter is changed.
 - **Live statistics** show matching items, total scanned, and items in processing queue.
 - When **filtering is disabled**, all items remain fully visible while still showing location information.
-- **Automatic captcha detection** and popup solver when API is blocked.
+- **Automatic API recovery** retries real item requests when access is temporarily blocked.
 - **Locale normalization** supports country labels returned by Vinted in multiple languages.
 - **Duplicate seller detection** highlights items from the same seller with color-coded badges.
 
@@ -58,14 +58,14 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 - 💾 **Preset management** — Save, load, delete, export, and import filter presets
 - 🏷️ **Seller flagging** — Flag/unflag sellers for quick identification
 - 👥 **Duplicate detection** — Color-coded badges show items from the same seller
-- 🔓 **Auto captcha solver** — Automatically detects and opens captcha popup for resolution
+- 🔓 **API recovery watchdog** — Automatically retries real item requests when access is blocked
 - 🌐 **Locale normalization** — Supports country labels from multiple Vinted locales
 - 📈 **Progress tracking** — Visual progress bar shows scanning completion
 - 🗑️ **Cache management** — Clear cached data with one click
 - 📊 **Stats reset** — Reset statistics counters when needed
 - ⚡ **Lightweight** — Pure JavaScript, no external dependencies
 - ⏱️ **Rate-limited processing (~1 item per second by default)**
-- 🛑 Automatically pauses on **403 (captcha)** or **429 (rate limit)**
+- 🛑 Automatically backs off and retries on **403 (access block)** or **429 (rate limit)**
 - 🧠 Remembers filter settings, dark mode, and collapsed state during the session
 - 🔒 No tracking, no ads, no data sent to third parties
 - 📖 Fully readable, non-obfuscated source code
@@ -126,7 +126,7 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 12. **Duplicate badges** (👤) show items from the same seller with color-coded gradients.
 13. **Drag the menu** to reposition it if needed, or **minimize** with the − button.
 14. **Press Alt+V** to quickly toggle menu visibility.
-15. If API is blocked, **solve the automatic captcha popup** and resume.
+15. If API access is paused, wait for automatic recovery or click **Retry API now**.
 16. **Clear cache** if you want to refresh all location data.
 17. **Export presets** to save your configurations as JSON files.
 18. **Import presets** to load saved configurations from other devices.
@@ -147,8 +147,8 @@ When **filtering is disabled**, **no items are hidden or de-emphasized**, and th
 
 ### Troubleshooting
 - **Items not clickable?** — Make sure you're running the latest version (v1.4.1.1+)
-- **No location data showing?** — Check whether Vinted is showing a captcha or rate limit warning
-- **Captcha appearing?** — Complete the automatic popup and click Resume
+- **No location data showing?** — Check whether the menu shows an API access or rate limit warning
+- **API access paused?** — Wait for automatic recovery or click **Retry API now**
 - **Items loading slowly?** — This is normal due to API rate limiting
 - **Filter not working?** — Make sure "Filter Active" is toggled ON
 

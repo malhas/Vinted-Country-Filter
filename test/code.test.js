@@ -27,6 +27,26 @@ function loadFunction(functionName, context = {}) {
     throw new Error(`Could not extract ${functionName}`);
 }
 
+function loadAccessBlockDetector() {
+    return loadFunction('isAccessBlockResponse', {
+        getResponseHeader: loadFunction('getResponseHeader'),
+        getResponseText: loadFunction('getResponseText')
+    });
+}
+
+function loadApiAccessBlocked() {
+    return loadFunction('isApiAccessBlocked', {
+        console: {
+            warn() {}
+        },
+        fetch: async () => {
+            throw new Error('legacy probe should not run when a response is supplied');
+        },
+        isAccessBlockResponse: loadAccessBlockDetector(),
+        location: { hostname: 'www.vinted.pt' }
+    });
+}
+
 class FakeElement {
     constructor(tagName, attributes = {}) {
         this.tagName = tagName.toUpperCase();
@@ -218,9 +238,193 @@ test('normalizes localized country names returned by current Vinted locales', ()
     assert.equal(normalizeCountryName('España'), 'spain');
 });
 
+test('detects Cloudflare challenge responses as API access blocks', async () => {
+    const isAccessBlockResponse = loadAccessBlockDetector();
+    const response = {
+        status: 403,
+        headers: {
+            get(name) {
+                return name.toLowerCase() === 'cf-mitigated' ? 'challenge' : null;
+            }
+        }
+    };
+
+    assert.equal(await isAccessBlockResponse(response), true);
+});
+
+test('does not treat plain forbidden item JSON as an API access block', async () => {
+    const isAccessBlockResponse = loadAccessBlockDetector();
+    const response = {
+        status: 403,
+        headers: {
+            get(name) {
+                return name.toLowerCase() === 'content-type' ? 'application/json' : null;
+            }
+        },
+        clone() {
+            return this;
+        },
+        text: async () => JSON.stringify({ message_code: 'forbidden' })
+    };
+
+    assert.equal(await isAccessBlockResponse(response), false);
+});
+
+test('checks the blocked item endpoint when polling for restored API access', async () => {
+    let intervalCallback;
+    let fetchedUrl = '';
+    let solved = false;
+    const context = {
+        API_RECOVERY_RETRY_DELAYS: [5000, 15000, 30000, 60000],
+        captchaCheckInterval: null,
+        captchaProbeIndex: 0,
+        captchaProbeItemIds: [],
+        captchaRetryAttempt: 0,
+        clearCaptchaCheckTimer() {},
+        collectApiProbeItemIds: itemId => [String(itemId)],
+        console: {
+            log() {}
+        },
+        fetch: async url => {
+            fetchedUrl = url;
+            return { status: 200, ok: true };
+        },
+        isAccessBlockResponse: async () => false,
+        location: { hostname: 'www.vinted.pt' },
+        onCaptchaSolved() {
+            solved = true;
+        },
+        setTimeout(callback) {
+            intervalCallback = callback;
+            return 1;
+        },
+        updateStatusMessage() {}
+    };
+    const startCaptchaCheck = loadFunction('startCaptchaCheck', context);
+
+    startCaptchaCheck('9257941938');
+    await intervalCallback();
+
+    assert.equal(fetchedUrl, 'https://www.vinted.pt/api/v2/items/9257941938/details');
+    assert.equal(solved, true);
+});
+
+test('rotates real item endpoints with backoff while polling for restored API access', async () => {
+    const scheduled = [];
+    const fetchedUrls = [];
+    let solved = false;
+    const challengeResponse = {
+        status: 403,
+        headers: {
+            get(name) {
+                return name.toLowerCase() === 'cf-mitigated' ? 'challenge' : null;
+            }
+        }
+    };
+    const healthyResponse = { status: 200, ok: true };
+    const context = {
+        API_RECOVERY_RETRY_DELAYS: [5000, 15000, 30000, 60000],
+        captchaCheckInterval: null,
+        captchaProbeIndex: 0,
+        captchaProbeItemIds: [],
+        captchaRetryAttempt: 0,
+        clearCaptchaCheckTimer() {},
+        clearTimeout() {},
+        collectApiProbeItemIds: loadFunction('collectApiProbeItemIds', {
+            addUniqueProbeItemId: loadFunction('addUniqueProbeItemId'),
+            processedItems: new Map([
+                ['333', { id: '333' }]
+            ]),
+            queue: [
+                { id: '222' },
+                { id: '333' }
+            ]
+        }),
+        console: {
+            log() {}
+        },
+        fetch: async url => {
+            fetchedUrls.push(url);
+            return fetchedUrls.length === 1 ? challengeResponse : healthyResponse;
+        },
+        isAccessBlockResponse: loadAccessBlockDetector(),
+        location: { hostname: 'www.vinted.pt' },
+        onCaptchaSolved() {
+            solved = true;
+        },
+        setTimeout(callback, delay) {
+            scheduled.push({ callback, delay });
+            return scheduled.length;
+        },
+        updateStatusMessage() {}
+    };
+    const startCaptchaCheck = loadFunction('startCaptchaCheck', context);
+
+    startCaptchaCheck('111');
+
+    assert.equal(scheduled[0].delay, 5000);
+    await scheduled[0].callback();
+    assert.equal(fetchedUrls[0], 'https://www.vinted.pt/api/v2/items/111/details');
+    assert.equal(solved, false);
+    assert.equal(scheduled[1].delay, 15000);
+
+    await scheduled[1].callback();
+
+    assert.equal(fetchedUrls[1], 'https://www.vinted.pt/api/v2/items/222/details');
+    assert.equal(solved, true);
+});
+
+test('manual API retry clears the paused state and starts an immediate real-item probe', () => {
+    const warning = { style: { display: 'block' } };
+    let statusMessage = '';
+    let probeStarted = null;
+    let processQueued = false;
+    const context = {
+        captchaCheckInterval: 42,
+        captchaProbeItemIds: ['9257941938'],
+        clearCaptchaCheckTimer() {},
+        clearTimeout() {},
+        collectApiProbeItemIds: () => ['9257941938'],
+        document: {
+            getElementById: id => id === 'vinted-captcha-warning' ? warning : null
+        },
+        isPausedForCaptcha: true,
+        processQueue() {
+            processQueued = true;
+        },
+        setTimeout(callback) {
+            callback();
+        },
+        startCaptchaCheck(itemId, immediate) {
+            probeStarted = { itemId, immediate };
+        },
+        updateStatusMessage(message) {
+            statusMessage = message;
+        }
+    };
+    const retryApiAccessNow = loadFunction('retryApiAccessNow', context);
+
+    retryApiAccessNow();
+
+    assert.equal(context.isPausedForCaptcha, false);
+    assert.equal(warning.style.display, 'none');
+    assert.match(statusMessage, /Retrying API access/i);
+    assert.deepEqual(probeStarted, { itemId: '9257941938', immediate: true });
+    assert.equal(processQueued, true);
+});
+
 test('pauses on captcha without opening an automatic popup from the main tab', async () => {
     let popupOpenCount = 0;
     const warning = { style: { display: 'none' } };
+    const challengeResponse = {
+        status: 403,
+        ok: false,
+        headers: {
+            get(name) {
+                return name.toLowerCase() === 'cf-mitigated' ? 'challenge' : null;
+            }
+        }
+    };
     const item = {
         id: '123',
         element: new FakeElement('div'),
@@ -240,15 +444,15 @@ test('pauses on captcha without opening an automatic popup from the main tab', a
             getElementById: id => id === 'vinted-captcha-warning' ? warning : null
         },
         englishCheckComplete: true,
-        fetch: async () => ({ status: 403, ok: false }),
+        fetch: async () => challengeResponse,
         getCachedItem: () => null,
+        isApiAccessBlocked: loadApiAccessBlocked(),
         isFilterEnabled: true,
         isPaused: false,
         isPausedForCaptcha: false,
         isProcessing: false,
         isWaitingForEnglish: false,
         location: { hostname: 'www.vinted.pt' },
-        isApiAccessBlocked: async () => true,
         normalizeCountryName: value => String(value).toLowerCase(),
         openCaptchaPopup: () => {
             popupOpenCount++;
@@ -298,6 +502,89 @@ test('skips a single forbidden item when the API probe is healthy', async () => 
         fetch: async () => ({ status: 403, ok: false }),
         getCachedItem: () => null,
         isApiAccessBlocked: async () => false,
+        isFilterEnabled: true,
+        isPaused: false,
+        isPausedForCaptcha: false,
+        isProcessing: false,
+        isWaitingForEnglish: false,
+        location: { hostname: 'www.vinted.pt' },
+        markItemUnavailable(itemData) {
+            itemData.overlay.textContent = '⚠️ Unavailable';
+        },
+        normalizeCountryName: value => String(value).toLowerCase(),
+        openCaptchaPopup: () => {
+            throw new Error('popup should not open');
+        },
+        queue: [item],
+        setCachedItem() {},
+        setTimeout(callback) {
+            timeoutCallback = callback;
+        },
+        startCaptchaCheck() {
+            throw new Error('captcha polling should not start');
+        },
+        updateStatusMessage() {},
+        updateQueueStatus() {
+            queueStatusUpdates++;
+        },
+        updateSellerFlagBadge() {}
+    };
+    const processQueue = loadFunction('processQueue', context);
+
+    await processQueue();
+    if (timeoutCallback) timeoutCallback();
+
+    assert.equal(context.isPausedForCaptcha, false);
+    assert.equal(warning.style.display, 'none');
+    assert.equal(context.queue.length, 0);
+    assert.match(item.overlay.textContent, /Unavailable/);
+    assert.equal(context.isProcessing, false);
+    assert.equal(queueStatusUpdates, 1);
+});
+
+test('skips a single forbidden item even when the legacy probe endpoint returns 403', async () => {
+    const warning = { style: { display: 'none' } };
+    const apiAccessBlocked = loadApiAccessBlocked();
+    const item = {
+        id: '654',
+        element: new FakeElement('div'),
+        overlay: new FakeElement('div'),
+        country: '',
+        seller: ''
+    };
+    let queueStatusUpdates = 0;
+    let timeoutCallback;
+    const forbiddenResponse = {
+        status: 403,
+        ok: false,
+        headers: {
+            get(name) {
+                return name.toLowerCase() === 'content-type' ? 'application/json' : null;
+            }
+        },
+        clone() {
+            return this;
+        },
+        text: async () => JSON.stringify({ message_code: 'forbidden' })
+    };
+    const context = {
+        applyFilter() {},
+        console: {
+            error() {},
+            log() {},
+            warn() {}
+        },
+        countryToFlag: {},
+        document: {
+            getElementById: id => id === 'vinted-captcha-warning' ? warning : null
+        },
+        englishCheckComplete: true,
+        fetch: async () => forbiddenResponse,
+        getCachedItem: () => null,
+        isApiAccessBlocked: async response => {
+            assert.ok(response, 'current item response should be inspected instead of the legacy probe');
+            return apiAccessBlocked(response);
+        },
         isFilterEnabled: true,
         isPaused: false,
         isPausedForCaptcha: false,
